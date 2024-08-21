@@ -33,6 +33,8 @@ struct WorldMesh {
     let normals: ARGeometrySource
     let submesh: ARGeometryElement
     let inBox: [Int32]
+//    let color: [SIMD3<Float>]
+    let colorBuffer: MTLBuffer?
 }
 
 let kMaxBuffersInFlight: Int = 3
@@ -90,8 +92,6 @@ class Renderer {
     var ground: SCNVector3!
     var bBox: BoundingBox!
     var bBoxOrigin: SCNVector3!
-    
-    //var colorMap: MTLTexture?
 
     var uniformBufferIndex: Int = 0
     var frameUniformBufferOffset: Int = 0
@@ -156,7 +156,7 @@ class Renderer {
     func updateWorldMeshAnchors(_ frame: ARFrame) {
         let anchors = frame.anchors.filter { $0 is ARMeshAnchor } as! [ARMeshAnchor]
         
-        
+        // TODO: not optimized code. To optimize we should update only changed geometry (or geometry that in frame right now)
         worldMeshes = anchors.map { anchor in
             let aTrans = SCNMatrix4(anchor.transform)
             
@@ -164,6 +164,8 @@ class Renderer {
             let vertices: ARGeometrySource = meshGeometry.vertices
             let normals: ARGeometrySource = meshGeometry.normals
             let submesh: ARGeometryElement = meshGeometry.faces
+            var vertexColors: [SIMD3<Float>] = []
+            
             var inBox: [Int32] = []
             
             for vIndex in 0..<vertices.count {
@@ -173,17 +175,35 @@ class Renderer {
                 let wPos = SCNVector3(wTrans.m41, wTrans.m42, wTrans.m43)
                 
                 // only save/display what's inside of the box/scanning region
+                // Limiting disabled (commented) in shader
                 if bBox.contains(wPos) {
                     inBox.append(1)
                 } else {
                     inBox.append(0)
                 }
+                
+                // Add "empty" color to fill vertexColors array
+                vertexColors.append(simd_float3())
             }
+            
+            // TODO: need to investigate for more optimized algorythm for texturing verticies (because of apple changed classification from verticies to faces we should find all face verticies and set corresponding color into them)
+            for fIndex in 0..<meshGeometry.faces.count {
+                let classification = meshGeometry.classificationOf(faceWithIndex: fIndex)
+                let shaderColor = classification.color.toSimdFloat3()
+                let vIndices = meshGeometry.vertexIndicesOf(faceWithIndex: fIndex)
+                for vIndex in vIndices {
+                    vertexColors[vIndex] = shaderColor
+                }
+            }
+            
+            // Now we make buffer for colors and copy our vertex colors into it
+            let colorBuffer = device.makeBuffer(bytes: &vertexColors, length: MemoryLayout<SIMD3<Float>>.stride * vertexColors.count)
             let worldMesh = WorldMesh(transform: anchor.transform,
                                       vertices: vertices,
                                       normals: normals,
                                       submesh: submesh,
-                                      inBox: inBox)
+                                      inBox: inBox,
+                                      colorBuffer: colorBuffer)
             return worldMesh
         }
     }
@@ -336,8 +356,8 @@ class Renderer {
     
     
     func placeBox(pos: SCNVector3) {
-        let min = SCNVector3(pos.x - 0.5, pos.y - 0.5, pos.z - 1.0)
-        let max = SCNVector3(pos.x + 0.5, pos.y + 0.5, pos.z)
+        let min = SCNVector3(pos.x - 1.75, pos.y - 1.75, pos.z - 2.5)
+        let max = SCNVector3(pos.x + 1.75, pos.y + 1.75, pos.z + 1.0)
         bBox = BoundingBox((min: min, max: max))
         bBoxOrigin = pos
     }
@@ -446,12 +466,12 @@ class Renderer {
     }
     
     func drawAnchorGeometry(renderEncoder: MTLRenderCommandEncoder) {
-        
-        //renderEncoder.setFragmentTexture(colorMap, index: 0)
 
         for (index, mesh) in worldMeshes.enumerated() {
             renderEncoder.setVertexBuffer(mesh.vertices.buffer, offset: 0, index: 0)
             renderEncoder.setVertexBuffer(mesh.normals.buffer, offset: 0, index: 1)
+            // this buffer for our colors
+            renderEncoder.setVertexBuffer(mesh.colorBuffer, offset: 0, index: 5)
             renderEncoder.setVertexBuffer(anchorUniformBuffer,
                                           offset: anchorUniformBufferOffset + MemoryLayout<InstanceUniforms>.size * index,
                                           index: 2)

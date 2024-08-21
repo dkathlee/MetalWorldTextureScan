@@ -62,7 +62,7 @@ class ScanViewController: UIViewController, MTKViewDelegate, ARSessionDelegate, 
         session.delegate = self
         
         wConfig = ARWorldTrackingConfiguration()
-        wConfig.sceneReconstruction = .mesh
+        wConfig.sceneReconstruction = .meshWithClassification
         wConfig.frameSemantics = [.sceneDepth]
         
         mtkView = MTKView(frame: view.frame)
@@ -156,32 +156,9 @@ class ScanViewController: UIViewController, MTKViewDelegate, ARSessionDelegate, 
         }
     }
     
-    
-    // displays a sphere in the location where each texture was saved
-    func visualizeTextureCloud() {
-        
-        var textureCloud = renderer.textureCloud
-        textureCloud.sort { $0.dist < $1.dist }
-        
-        for frame in textureCloud {
-            
-            print(frame.dist)
-            
-            let sphere = SCNSphere(radius: 0.03)
-            let mat = SCNMaterial()
-            mat.diffuse.contents = UIColor.blue
-            sphere.materials = [mat]
-            let frameNode = SCNNode(geometry: sphere)
-            frameNode.position = frame.pos
-            arView.scene.rootNode.addChildNode(frameNode)
-        }
-    }
-    
     func didSaveFrame(renderer: Renderer) {
         hapty.impactOccurred()
     }
-    
-    
     
     func makeTexturedMesh() {
         
@@ -189,6 +166,10 @@ class ScanViewController: UIViewController, MTKViewDelegate, ARSessionDelegate, 
         let textureCloud = renderer.textureCloud
         
         print("texture images: \(textureImgs.count)")
+        
+        
+        let scene = SCNScene()
+        let asset = MDLAsset()
         
         // each 'mesh' is a chunk of the whole scan
         for mesh in worldMeshes {
@@ -244,12 +225,6 @@ class ScanViewController: UIViewController, MTKViewDelegate, ARSessionDelegate, 
                     let tCoord = getTextureCoord(frame: tFrame, vert: vert, aTrans: mesh.transform)
                     tCoords.append(tCoord)
                     texture = textureImgs[textureCloud.count - 1]
-                    
-                    // visualize the normals if you want
-                    if mesh.inBox[fv] == 1 {
-                        //let normVis = lineBetweenNodes(positionA: wPos, positionB: wNPos, inScene: arView.scene)
-                        //arView.scene.rootNode.addChildNode(normVis)
-                    }
                 }
                 allVerts.append(fVerts)
                 allNorms.append(fNorms)
@@ -269,11 +244,28 @@ class ScanViewController: UIViewController, MTKViewDelegate, ARSessionDelegate, 
                 geom.materials = [mat]
                 let meshNode = SCNNode(geometry: geom)
                 
-                DispatchQueue.main.async {
-                    self.scanNode.addChildNode(meshNode)
-                }
+                scene.rootNode.addChildNode(meshNode)
+                
+                let mesh = MDLMesh(scnGeometry: geom)
+                asset.add(mesh)
             }
         }
+        
+        let fixedFilename = String("scanned_geom.usdz")
+        let filePath = FileManager.default.urls(for: .documentDirectory,
+                                                 in: .userDomainMask).first!
+        let usdz: URL = filePath.appendingPathComponent(fixedFilename)
+        
+        scene.write(to: usdz, delegate: nil)
+        
+        let controller = UIActivityViewController(activityItems: [usdz],
+                                          applicationActivities: nil)
+        controller.popoverPresentationController?.sourceView = arView
+        self.present(controller, animated: true, completion: nil)
+    }
+    
+    func getDocumentsDirectory() throws -> URL {
+         return try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
     }
     
     
@@ -427,7 +419,6 @@ class ScanViewController: UIViewController, MTKViewDelegate, ARSessionDelegate, 
             textureImgs[i] = img
         }
         
-        //visualizeTextureCloud()
         makeTexturedMesh()
     }
     

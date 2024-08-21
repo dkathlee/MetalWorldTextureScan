@@ -73,6 +73,7 @@ vertex VertexOut anchorGeometryVertexTransform(Vertex in [[stage_in]],
                                                 constant FrameUniforms &uniforms [[ buffer(3) ]],
                                                 constant InstanceUniforms *instanceUniforms [[ buffer(2) ]],
                                                 constant uint *inBox [[ buffer(4) ]],
+                                                constant float3 *color [[ buffer(5)]],
                                                 ushort vid [[vertex_id]],
                                                 ushort iid [[instance_id]]) {
     VertexOut out;
@@ -88,17 +89,19 @@ vertex VertexOut anchorGeometryVertexTransform(Vertex in [[stage_in]],
     float4 normal = modelMatrix * float4(in.normal.xyz, 0.0f);
     out.normal = normalize(normal.xyz);
     
-    
-    if (inBox[vid] == 1)
-    {
-        out.color = float4(0.2, 0.85, 0.32, 0.45f);
-        out.color2 = float4(1.0f);
-    }
-    else
-    {
-        out.color = float4(0.0, 0.0, 0.0, 0.0f);
-        out.color2 = float4(0.0f);
-    }
+    // Uncomment to limit rendering by box
+//    if (inBox[vid] == 1)
+//    {
+//        out.color = float4(color[vid], 0.0f);
+        out.color = float4(0.0, 0.0, 0.0, 0.0);
+        out.color2 = float4(color[vid], 1.0f);
+//        out.color2 = float4(1.0f);
+//    }
+//    else
+//    {
+//        out.color = float4(0.0, 0.0, 0.0, 0.0f);
+//        out.color2 = float4(0.0f);
+//    }
     
     return out;
 }

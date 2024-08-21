@@ -85,6 +85,7 @@ extension ARMeshGeometry {
         return normal
     }
     
+    // Here we receive all vert indicies from face with given index
     func vertexIndicesOf(faceWithIndex index: Int) -> [Int] {
         let indicesPerFace = faces.indexCountPerPrimitive
         let facesPointer = faces.buffer.contents()
@@ -94,6 +95,45 @@ extension ARMeshGeometry {
             vertexIndices.append(Int(vertexIndexAddress.assumingMemoryBound(to: UInt32.self).pointee))
         }
         return vertexIndices
+    }
+    
+    // Here we receive classification from face index
+    func classificationOf(faceWithIndex index: Int) -> ARMeshClassification {
+        guard let classification = classification else { return .none }
+        let classificationAddress = classification.buffer.contents().advanced(by: index)
+        let classificationValue = Int(classificationAddress.assumingMemoryBound(to: UInt8.self).pointee)
+        return ARMeshClassification(rawValue: classificationValue) ?? .none
+    }
+}
+
+extension ARMeshClassification {
+    // Classification to color
+    var color: UIColor {
+        switch self {
+        case .ceiling: return .cyan
+        case .door: return .brown
+        case .floor: return .red
+        case .seat: return .purple
+        case .table: return .yellow
+        case .wall: return .green
+        case .window: return .blue
+        case .none: return .lightGray
+        @unknown default: return .gray
+        }
+    }
+}
+
+extension UIColor {
+    func toSimdFloat3() -> simd_float3 {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        // Extract RGB components
+        self.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        
+        return simd_float3(Float(red), Float(green), Float(blue))
     }
 }
 
